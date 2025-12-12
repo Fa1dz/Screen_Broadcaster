@@ -11,18 +11,18 @@ class SenderApp:
     def __init__(self, root):
         self.root = root
         self.root.title("Screen Broadcaster")
-        self.root.geometry("600x400")
+        self.root.geometry("600x450")
         self.root.configure(bg="black")
         
         # Title
         tk.Label(self.root, text="Live Screen Broadcaster", fg="lime", bg="black", font=("Arial", 14, "bold")).pack(pady=10)
         
-        # IP entry
+        # Listener IP entry
         ip_frame = tk.Frame(self.root, bg="black")
         ip_frame.pack(pady=5)
-        tk.Label(ip_frame, text="Target IP:", fg="lime", bg="black").pack(side=tk.LEFT, padx=5)
+        tk.Label(ip_frame, text="Listener IP:", fg="lime", bg="black").pack(side=tk.LEFT, padx=5)
         self.ip_entry = tk.Entry(ip_frame, bg="black", fg="lime", width=20)
-        self.ip_entry.insert(0, "192.168.56.1")
+        self.ip_entry.insert(0, "127.0.0.1")
         self.ip_entry.pack(side=tk.LEFT, padx=5)
         
         # Port entry
@@ -57,6 +57,10 @@ class SenderApp:
         self.status_label = tk.Label(self.root, text="Status: Idle", fg="red", bg="black", font=("Arial", 10))
         self.status_label.pack(pady=5)
         
+        # Test connection button
+        self.test_btn = tk.Button(self.root, text="Test Connection", command=self.test_connection, bg="cyan", fg="black", font=("Arial", 9))
+        self.test_btn.pack(pady=5)
+        
         # Stats label
         self.stats_label = tk.Label(self.root, text="Frames sent: 0 | Bytes: 0 KB", fg="cyan", bg="black")
         self.stats_label.pack(pady=5)
@@ -66,6 +70,34 @@ class SenderApp:
         self.bytes_sent = 0
         self.socket = None
     
+    def test_connection(self):
+        """Test if listener is reachable."""
+        ip = self.ip_entry.get().strip()
+        port_str = self.port_entry.get().strip()
+        
+        if not ip:
+            messagebox.showerror("Error", "Please enter listener IP.")
+            return
+        
+        try:
+            port = int(port_str)
+        except ValueError:
+            messagebox.showerror("Error", "Port must be a number.")
+            return
+        
+        try:
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.settimeout(3)
+            result = sock.connect_ex((ip, port))
+            sock.close()
+            
+            if result == 0:
+                messagebox.showinfo("Success", f"✓ Listener found at {ip}:{port}")
+            else:
+                messagebox.showerror("Failed", f"✗ Cannot connect to {ip}:{port}\n\nMake sure ListenerTest.py is running!")
+        except Exception as e:
+            messagebox.showerror("Error", f"Connection test failed: {e}")
+    
     def toggle_broadcast(self):
         """Start or stop broadcasting."""
         if self.broadcasting:
@@ -74,12 +106,12 @@ class SenderApp:
             self.start_broadcast()
     
     def start_broadcast(self):
-        """Start broadcasting screen."""
+        """Start broadcasting screen to listener."""
         ip = self.ip_entry.get().strip()
         port_str = self.port_entry.get().strip()
         
         if not ip:
-            messagebox.showerror("Error", "Please enter a target IP address.")
+            messagebox.showerror("Error", "Please enter listener IP.")
             return
         
         try:
@@ -103,7 +135,7 @@ class SenderApp:
         t.start()
     
     def broadcast_thread(self, ip, port, fps):
-        """Broadcast screen in a background thread."""
+        """Broadcast screen - connects to listener."""
         try:
             self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             self.socket.settimeout(5)
@@ -111,9 +143,11 @@ class SenderApp:
             self.status_label.config(text=f"Status: Connecting to {ip}:{port}...", fg="yellow")
             self.root.update()
             
+            # Connect to the listener
             self.socket.connect((ip, port))
             
             self.status_label.config(text=f"Status: Broadcasting to {ip}:{port}", fg="lime")
+            self.root.update()
             
             delay = 1.0 / fps
             quality = self.quality_slider.get()
@@ -143,20 +177,20 @@ class SenderApp:
                     time.sleep(delay)
                 
                 except Exception as e:
-                    self.status_label.config(text=f"Status: Error sending frame", fg="red")
+                    self.status_label.config(text=f"Status: Error sending frame: {e}", fg="red")
                     self.root.update()
                     break
         
         except socket.timeout:
             self.status_label.config(text="Status: Connection timeout", fg="red")
             self.root.update()
-            messagebox.showerror("Error", f"Connection timeout: Could not reach {ip}:{port}")
+            messagebox.showerror("Error", "Connection timeout - listener not responding")
         except ConnectionRefusedError:
             self.status_label.config(text="Status: Connection refused", fg="red")
             self.root.update()
-            messagebox.showerror("Error", f"Connection refused: Make sure listener is running on {ip}:{port}")
+            messagebox.showerror("Error", f"Cannot connect to {ip}:{port}\n\nMake sure ListenerTest.py is listening!")
         except Exception as e:
-            self.status_label.config(text="Status: Error", fg="red")
+            self.status_label.config(text=f"Status: Error - {str(e)}", fg="red")
             self.root.update()
             messagebox.showerror("Error", f"Broadcast failed: {e}")
         finally:
